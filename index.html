@@ -32,7 +32,7 @@
 const initial={products:[{id:1,category:'衣服',name:'白色短袖',price:590,stock:20,gift:false},{id:2,category:'配件',name:'帆布袋',price:350,stock:15,gift:false},{id:3,category:'貼紙',name:'水果貼紙包',price:100,stock:30,gift:false}],rules:[{id:1,name:'滿 1000 元打 9 折',threshold:1000,percent:10,giftId:null,giftQty:0}],cart:{},orders:[]};
 let data=JSON.parse(localStorage.getItem('woooguo-market-data')||'null')||initial, active='全部', manageActive='全部', tab='products', revenuePeriod='today', editingProductId=null;
 data.orders=data.orders||[];
-const SUPABASE_URL='https://xfwrluahcbamqrjieinu.supabase.co';
+const SUPABASE_URL='https://xfwrluahcbamqrijeinu.supabase.co';
 const SUPABASE_KEY='sb_publishable_aETaxz_WBRwHL2iJMqpXcg_0jvjTGFM';
 const $=id=>document.getElementById(id); const money=n=>'$'+Math.round(n).toLocaleString('zh-TW');
 let syncTimer=null,syncing=false,lastRemoteUpdate='';
