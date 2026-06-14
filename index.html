@@ -3,6 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#292420">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WOOOGUO">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <title>WOOOGUO 市集小幫手</title>
   <style>
     :root{--ink:#292420;--muted:#7d736b;--paper:#fffdf8;--cream:#f4ede3;--brand:#e85d3f;--brand2:#bb4029;--green:#32745b;--line:#e4d9cd;--shadow:0 10px 30px #6d4e3220}
@@ -30,20 +36,21 @@
   <div class="toast" id="toast"></div>
 <script>
 const initial={products:[{id:1,category:'衣服',name:'白色短袖',price:590,stock:20,gift:false},{id:2,category:'配件',name:'帆布袋',price:350,stock:15,gift:false},{id:3,category:'貼紙',name:'水果貼紙包',price:100,stock:30,gift:false}],rules:[{id:1,name:'滿 1000 元打 9 折',threshold:1000,percent:10,giftId:null,giftQty:0}],cart:{},orders:[]};
+const HAD_LOCAL_DATA=!!localStorage.getItem('woooguo-market-data');
 let data=JSON.parse(localStorage.getItem('woooguo-market-data')||'null')||initial, active='全部', manageActive='全部', tab='products', revenuePeriod='today', editingProductId=null;
 data.orders=data.orders||[];
 const SUPABASE_URL='https://xfwrluahcbamqrijeinu.supabase.co';
 const SUPABASE_KEY='sb_publishable_aETaxz_WBRwHL2iJMqpXcg_0jvjTGFM';
 const $=id=>document.getElementById(id); const money=n=>'$'+Math.round(n).toLocaleString('zh-TW');
-let syncTimer=null,syncing=false,lastRemoteUpdate='';
+let syncTimer=null,syncing=false,lastRemoteUpdate='',pendingSync=localStorage.getItem('woooguo-pending-sync')==='yes';
 function normalizeData(){data.products=data.products||initial.products;data.rules=data.rules||initial.rules;data.cart=data.cart||{};data.orders=data.orders||[]}
 function dataScore(d){return (d?.products||[]).length+(d?.orders||[]).length*3+(d?.products||[]).filter(p=>p.image).length*5+(d?.rules||[]).length}
 function syncStatus(text,type){$('syncStatus').textContent=text;$('syncStatus').className='sync-status '+type}
-function save(){normalizeData();localStorage.setItem('woooguo-market-data',JSON.stringify(data));syncStatus('等待同步','busy');clearTimeout(syncTimer);syncTimer=setTimeout(pushRemote,450)}
-function syncError(e){const detail=e?.message==='Failed to fetch'?'無法連線到資料庫':(e?.message||'未知錯誤').slice(0,80);syncStatus(`離線：${detail}`,'error');console.error('同步失敗',e)}
-async function pushRemote(){if(syncing)return;syncing=true;syncTimer=null;syncStatus('同步中','busy');try{const r=await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.woooguo-market`,{method:'PATCH',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({data,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(`寫入失敗 ${r.status}：${await r.text()}`);const rows=await r.json();lastRemoteUpdate=rows[0]?.updated_at||'';syncStatus('已同步','ok')}catch(e){syncError(e)}finally{syncing=false}}
-async function pullRemote(first=false){if(syncing||syncTimer||document.querySelector('dialog[open]'))return;try{const r=await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.woooguo-market&select=data,updated_at`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});if(!r.ok)throw new Error(`讀取失敗 ${r.status}：${await r.text()}`);const row=(await r.json())[0];if(row?.data?.products?.length){if(first&&dataScore(data)>dataScore(row.data)){syncStatus('正在上傳此裝置原有資料','busy');await pushRemote();return}if(row.updated_at!==lastRemoteUpdate){data=row.data;normalizeData();lastRemoteUpdate=row.updated_at;localStorage.setItem('woooguo-market-data',JSON.stringify(data));render();if(!$('managementPage').classList.contains('hidden'))showTab(tab)}syncStatus('已同步','ok')}else if(first){await pushRemote()}}catch(e){syncError(e)}}
-async function initializeSync(){normalizeData();render();if('serviceWorker'in navigator)navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));if('caches'in window)caches.delete('woooguo-market-v1');await pullRemote(true);setInterval(()=>pullRemote(false),4000)}
+function save(){normalizeData();localStorage.setItem('woooguo-market-data',JSON.stringify(data));pendingSync=true;localStorage.setItem('woooguo-pending-sync','yes');syncStatus(navigator.onLine?'已儲存在本機，等待同步':'離線使用中，資料已存本機','busy');clearTimeout(syncTimer);syncTimer=setTimeout(pushRemote,450)}
+function syncError(e){syncStatus('離線使用中，資料已存本機','busy');console.error('雲端同步暫時無法使用',e)}
+async function pushRemote(){if(syncing||!pendingSync||!navigator.onLine)return;syncing=true;syncTimer=null;syncStatus('本機資料同步中','busy');try{const r=await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.woooguo-market`,{method:'PATCH',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({data,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(`寫入失敗 ${r.status}`);const rows=await r.json();lastRemoteUpdate=rows[0]?.updated_at||'';pendingSync=false;localStorage.removeItem('woooguo-pending-sync');syncStatus('本機已儲存・雲端已同步','ok')}catch(e){syncError(e)}finally{syncing=false}}
+async function pullRemote(first=false){if(syncing||syncTimer||pendingSync||!navigator.onLine||document.querySelector('dialog[open]'))return;try{const r=await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.woooguo-market&select=data,updated_at`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});if(!r.ok)throw new Error(`讀取失敗 ${r.status}`);const row=(await r.json())[0];if(row?.data?.products?.length){if(first&&HAD_LOCAL_DATA&&dataScore(data)>dataScore(row.data)){pendingSync=true;localStorage.setItem('woooguo-pending-sync','yes');await pushRemote();return}if(row.updated_at!==lastRemoteUpdate){data=row.data;normalizeData();lastRemoteUpdate=row.updated_at;localStorage.setItem('woooguo-market-data',JSON.stringify(data));render();if(!$('managementPage').classList.contains('hidden'))showTab(tab)}syncStatus('本機已儲存・雲端已同步','ok')}else if(first){pendingSync=true;localStorage.setItem('woooguo-pending-sync','yes');await pushRemote()}}catch(e){syncError(e)}}
+async function initializeSync(){normalizeData();localStorage.setItem('woooguo-market-data',JSON.stringify(data));render();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');if(pendingSync)await pushRemote();else await pullRemote(true);window.addEventListener('online',()=>pendingSync?pushRemote():pullRemote(false));window.addEventListener('offline',()=>syncStatus('離線使用中，資料已存本機','busy'));setInterval(()=>pendingSync?pushRemote():pullRemote(false),4000)}
 function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',1800)}
 function checkoutToast(s){$('toast').classList.add('checkout-toast');$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>{$('toast').style.display='none';$('toast').classList.remove('checkout-toast')},2600)}
 function categories(){return ['全部',...new Set(data.products.filter(p=>!p.gift).map(p=>p.category))]}
